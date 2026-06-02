@@ -284,7 +284,7 @@ def parse_all_from_manifest(manifest_path: str, output_dir: str = "data/parsed")
         if not parsed:
             continue
         
-        # Save to disk as JSON 
+        # save to disk as JSON 
         safe_name = company_name.lower().replace(" ", "_").replace("(", "").replace(")", "")
         out_path = out / f"{safe_name}_parsed.json"
         out_path.write_text(json.dumps(parsed, indent=2, ensure_ascii=False))
