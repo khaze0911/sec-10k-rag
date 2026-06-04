@@ -13,6 +13,7 @@ Usage:
     python pipeline.py --step chunk        # Only chunk (requires parsed data)
     python pipeline.py --chunk-size 800    # Custom chunk size (default: 800 chars)
     python pipeline.py --skip-fetch        # Skip fetch if data already downloaded
+    python pipeline.py --step ingest       # Only ingest (requires chunked data)
 """
 
 import argparse
@@ -47,7 +48,7 @@ def step_parse(args):
     manifest_path = "data/raw/manifest.json"
     if not Path(manifest_path).exists():
         print(f"[ERROR] Manifest not found at {manifest_path}")
-        print("Run --step fetch first.")
+        print("Run --step fetch first")
         sys.exit(1)
     results = parse_all_from_manifest(manifest_path, output_dir="data/parsed")
     return len(results)
@@ -58,7 +59,7 @@ def step_chunk(args):
     parsed_dir = Path("data/parsed")
     if not any(parsed_dir.glob("*_parsed.json")):
         print(f"ERROR no parsed files found in {parsed_dir}")
-        print("RUN --step parse first.")
+        print("RUN --step parse first")
         sys.exit(1)
 
     stats = chunk_all_from_parsed_dir(
@@ -69,13 +70,25 @@ def step_chunk(args):
     )
     return stats
 
+def step_ingest(args):
+    print_banner("INGESTING chunks into pgvector")
+    chunks_path = Path("data/chunks/all_chunks.jsonl")
+    if not chunks_path.exists():
+        print(f"ERROR Chunks file not found at {chunks_path}")
+        print("Run --step chunk first")
+        sys.exit(1)
 
-def print_summary(fetch_count, parse_count, chunk_stats):
+    from src.ingest import run_ingest
+    result = run_ingest()
+    return result["chunks_ingested"]
+
+def print_summary(fetch_count, parse_count, chunk_stats, ingest_count):
     print(f"\n{'='*60}")
     print("PIPELINE COMPLETE")
     print(f"{'='*60}")
     print(f"Filings fetched:  {fetch_count}")
     print(f"Filings parsed:   {parse_count}")
+    print(f"Chunks ingested:  {ingest_count}")
 
     if chunk_stats:
         total = sum(v["total_chunks"] for v in chunk_stats.values())
@@ -94,11 +107,12 @@ def print_summary(fetch_count, parse_count, chunk_stats):
     print("data/parsed/       → extracted sections per company")
     print("data/chunks/       → JSONL chunks")
 
+
 def main():
     parser = argparse.ArgumentParser(description="SEC 10-K RAG Day 1 Pipeline")
     parser.add_argument(
         "--step",
-        choices=["fetch", "parse", "chunk", "all"],
+        choices=["fetch", "parse", "chunk", "ingest", "all"],
         default="all",
         help="Which step to run (default: all)",
     )
@@ -141,12 +155,16 @@ def main():
 
     if args.step in ("all", "chunk"):
         chunk_stats = step_chunk(args)
+    
+    ingest_count = 0
+    if args.step in ("all", "ingest"):
+        ingest_count = step_ingest(args)
 
     elapsed = time.time() - start
     print(f"\nTotal time: {elapsed:.1f}s")
 
     if args.step == "all":
-        print_summary(fetch_count, parse_count, chunk_stats)
+        print_summary(fetch_count, parse_count, chunk_stats, ingest_count)
 
 
 if __name__ == "__main__":
