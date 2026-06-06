@@ -41,8 +41,6 @@
 
 ## Project Structure
 
-## Project Structure
-
 ```
 sec-10k-rag/
 ├── src/
