@@ -2,7 +2,7 @@
 edgar_client.py — EDGAR API Client
 ====================================
 Fetches SEC 10-K annual report filings from EDGAR (Electronic Data Gathering,
-Analysis, and Retrieval) — the SEC's public database of all company filings.
+Analysis, and Retrieval)
 """
 
 import requests
@@ -51,8 +51,7 @@ COMPANIES = {
 Most recent 10-K filing for a company.
 
 Finds metadata:
-when it was filed, what the accession number is, and what the main
-document filename is. We use that info in fetch_10k_text() to download
+-when it was filed, what the accession number is, and what the main document filename is
 
 Args:
     cik:          Company CIK, e.g. "0001633917" (PayPal)
@@ -75,7 +74,7 @@ def get_recent_10k_filing(cik: str, company_name: str) -> Optional[dict]:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"ERROR Failed to fetch submissions for {company_name}: {e}")
+        print(f"ERROR failed to fetch submissions for {company_name}: {e}")
         return None
     
     filings = data.get("filings", {}).get("recent", {})
@@ -122,12 +121,10 @@ def get_recent_10k_filing(cik: str, company_name: str) -> Optional[dict]:
 Download the raw HTML content of the 10-K filing.
 
 Fallback strategy:
-- Try the primary_doc URL directly.
+- Try the primary_doc URL directly
 - If that fails or is too small, fetch the filing's INDEX page
-            (a directory listing) and try each .htm file we find there.
 
-The 10,000 character minimum check is because sometimes the primary doc
-is a tiny XBRL wrapper — real 10-Ks are hundreds of thousands of chars.
+The 10,000 character minimum check is because sometimes the primary doc is a tiny XBRL wrapper real 10-Ks are hundreds of thousands of chars
 
 Returns:
     Raw HTML string, or None if all attempts failed
@@ -187,15 +184,10 @@ def fetch_10k_text(filing_meta: dict) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 """
-Main pipeline: loop over all COMPANIES, fetch their 10-Ks, save to disk.
+Main pipeline: loop over all COMPANIES, fetch their 10-Ks, save to disk
 
 RATE LIMITING:
-The SEC allows max 10 requests/second, if you hammer EDGAR, they'll ban your IP.
-
-THE MANIFEST:
-We save a manifest.json that maps company name → filing metadata + local
-file path. This is the "contract" between Day 1 and Day 2 — the parser
-reads the manifest to know which files to process.
+The SEC allows max 10 requests/second, if you hammer EDGAR, they'll ban your IP
 
 Args:
     output_dir:      Where to save raw HTML files and manifest.json

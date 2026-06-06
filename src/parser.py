@@ -1,7 +1,7 @@
 """
 parser.py — 10-K Section Parser
 =================================
-Takes raw HTML from EDGAR and extracts the meaningful text sections.
+Takes raw HTML from EDGAR and extracts the meaningful text sections
 """
 
 import re
@@ -157,13 +157,12 @@ def find_section_boundaries(text: str) -> dict[str, tuple[int, int]]:
 # Extract Section Text
 # ---------------------------------------------------------------------------
 """
-Slice the plain text into per-section strings and apply quality filters.
+Slice the plain text into per-section strings and apply quality filters
 
 CHAR LIMITS:
-    We apply per-section character limits (defined in SECTION_CHAR_LIMITS)
+    apply per-section character limits (defined in SECTION_CHAR_LIMITS)
     to prevent pathologically large sections from blowing up memory or
-    producing thousands of chunks. Financial statements especially can be
-    enormous, we cap them at 60K chars
+    producing thousands of chunks
 
 MINIMUM LENGTH FILTER:
     We discard sections shorter than 200 chars. A section that short is
