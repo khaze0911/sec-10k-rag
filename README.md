@@ -44,6 +44,7 @@
 ```
 sec-10k-rag/
 ├── src/
+│   ├── __init__.py
 │   ├── edgar_client.py     # Fetches 10-K filings from SEC EDGAR
 │   ├── parser.py           # Extracts sections (Business, Risk Factors, MD&A)
 │   ├── chunker.py          # Splits sections into overlapping chunks
@@ -51,6 +52,9 @@ sec-10k-rag/
 │   ├── retriever.py        # Hybrid BM25 + vector retriever (RRF)
 │   ├── rag_chain.py        # LangChain RAG chain + Mistral-7B
 │   └── eval.py             # Evaluation framework
+├── scripts/
+│   ├── __init__.py
+│   └── diagnostic_retrieval.py   # Diagnostic script for the retrieval system
 ├── eval/
 │   └── gold_qa.json        # Hand-labeled Q&A pairs for evaluation
 ├── app/
@@ -62,6 +66,7 @@ sec-10k-rag/
 │   └── docker-compose.yml  # App + Postgres together
 ├── pipeline.py             # Master pipeline script
 ├── requirements.txt
+├── known_failures.md
 └── .env.example
 ```
 
