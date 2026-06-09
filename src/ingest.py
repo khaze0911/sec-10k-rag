@@ -36,6 +36,15 @@ EMBED_MODEL = "all-MiniLM-L6-v2"
 BATCH_SIZE = 64
 VECTOR_DIM = 384 # all-MiniLM-L6-v2 always outputs 384 numbers per input text
 
+# ivfflat index sizing — computed at index-build time from the real row count,
+# never hardcoded (see known_failures.md F1: a lists value sized for a much
+# larger corpus silently broke vector recall on this one).
+# pgvector heuristic: lists ~ rows/1000 for corpora under ~1M rows.
+# MIN floors tiny corpora so the index isn't under-partitioned either;
+# 16 was the value validated by the Day-4 eval on ~2.9k chunks.
+IVFFLAT_MIN_LISTS = 16
+IVFFLAT_ROWS_PER_LIST = 1000
+
 # ---------------------------------------------------------------------------
 # SQL table definition (DDL)
 # ---------------------------------------------------------------------------
@@ -58,12 +67,6 @@ CREATE TABLE IF NOT EXISTS chunks (
     -- It stores 384 float32 values efficiently and supports distance operators
     embedding      vector(384)
 );
-
--- Create a vector similarity search index.
-CREATE INDEX IF NOT EXISTS chunks_embedding_idx
-    ON chunks
-    USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
 """
 
 # ---------------------------------------------------------------------------
@@ -200,6 +203,35 @@ def ingest(chunks: list[dict], embeddings: np.array, conn) -> None:
   print(f"INGESTION complete — {len(rows):,} chunks in DB")
 
 # ---------------------------------------------------------------------------
+# Vector index (built AFTER ingestion, sized from the real corpus)
+# ---------------------------------------------------------------------------
+"""
+Drop and rebuild the ivfflat index with `lists` computed from the actual row
+count. Runs after every ingest so the k-means cell centers are retrained on
+the full, current corpus (an index created before/partway through ingestion
+clusters on incomplete data).
+
+Query-time counterpart: ivfflat.probes (session GUC) is set in
+retriever.py at search time
+"""
+def create_vector_index(conn) -> int:
+  with conn.cursor() as cur:
+    cur.execute("SELECT count(*) FROM chunks;")
+    n_rows = cur.fetchone()[0]
+
+  lists = max(IVFFLAT_MIN_LISTS, n_rows // IVFFLAT_ROWS_PER_LIST)
+
+  with conn.cursor() as cur:
+    cur.execute("DROP INDEX IF EXISTS chunks_embedding_idx;")
+    cur.execute(
+      f"CREATE INDEX chunks_embedding_idx ON chunks "
+      f"USING ivfflat (embedding vector_cosine_ops) WITH (lists = {lists});"
+    )
+  conn.commit()
+  print(f"IVFFLAT index built: lists={lists} (computed from {n_rows:,} rows)")
+  return lists
+
+# ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------
 """
@@ -252,6 +284,9 @@ def run_ingest():
 
   # write to db
   ingest(chunks, embeddings, conn)
+
+  # build the vector index on the full corpus, lists sized from real row count
+  create_vector_index(conn)
 
   # verify
   verify(conn)

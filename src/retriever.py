@@ -45,6 +45,9 @@ RRF_K = 60 # standard value
 POOL_MIN_CONN = 1
 POOL_MAX_CONN = 10
 
+# ivfflat 
+IVFFLAT_PROBES = 4  # ~sqrt(lists=16); validated by eval (see known_failures.md F1)
+
 # ---------------------------------------------------------------------------
 # Connection pool
 # ---------------------------------------------------------------------------
@@ -311,11 +314,17 @@ class HybridRetriever:
   def search(self, query: str, k: int = TOP_K, candidate_k: int = CANDIDATE_K) -> list[dict]:
     # one borrowed connection covers both DB touches for this request
     with get_connection() as conn:
-      # BM25 keyword search (in-memory scoring + a metadata fetch on conn)
-      bm25_results = bm25_search(query, self.bm25, self.chunk_ids, conn, k=candidate_k)
+      with conn.cursor() as cur:
+        cur.execute("SET ivfflat.probes = %s;", (IVFFLAT_PROBES,))
+      try:
+        # BM25 keyword search (in-memory scoring + a metadata fetch on conn)
+        bm25_results = bm25_search(query, self.bm25, self.chunk_ids, conn, k=candidate_k)
 
-      # Vector semantic search (pgvector query on conn)
-      vector_results = vector_search(query, self.model, conn, k=candidate_k)
+        # Vector semantic search (pgvector query on conn)
+        vector_results = vector_search(query, self.model, conn, k=candidate_k)
+      finally:
+        with conn.cursor() as cur:
+          cur.execute("RESET ivfflat.probes;")
 
     # fuse rankings (pure in-memory; no connection needed)
     results = reciprocal_rank_fusion(bm25_results, vector_results, k=k)
@@ -341,6 +350,7 @@ if __name__ == "__main__":
       "How does PayPal generate revenue?",
       "What is Block's strategy for Bitcoin?",
       "Goldman Sachs interest rate risk",
+      "What does Visa identify as key risks"
   ]
 
   for query in test_queries:
@@ -352,7 +362,7 @@ if __name__ == "__main__":
           print(f"\n  [{i}] {r['company']} — {r['section']} (chunk {r['chunk_index']})")
           print(f"       RRF score: {r['rrf_score']}")
           # Print first 200 chars of the chunk text as a preview
-          preview = r["text"][:200].replace("\n", " ")
+          preview = r["text"][:300].replace("\n", " ")
           print(f"       Preview: {preview}…")
 
   retriever.close()

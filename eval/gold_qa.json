@@ -1,0 +1,136 @@
+{
+  "_meta": {
+    "metric": "hit@k",
+    "metric_definition": "For each question, the gold target is a (target_company, target_section) pair. A retrieved chunk is a HIT if both its company and section equal the target. hit@k = 1 if any of the top-k retrieved chunks is a hit, else 0. Reported as the mean over questions, computed separately per channel (bm25 / vector / fused). Denominator is always 1 (did the correct section surface, yes/no).",
+    "tag_semantics": {
+      "normal": "Section exists with substantive content. Scored as retrieval quality. A miss here is a real retrieval failure.",
+      "retrieval-impossible": "Target section is absent (0 chunks) or near-absent (~1 chunk) in the corpus. Included as a stress test but scored seperately from the headline number. A miss here is a parser/ingest gap, not a retrieval-quality failure."
+    },
+    "company_strings_are_exact": "company values match the DB verbatim: 'Block (Square)', 'JPMorgan Chase', 'Goldman Sachs', 'Visa', 'PayPal', 'Coinbase', 'Lemonade'.",
+    "section_values": ["business", "financial_statements", "market_risk", "mda", "risk_factors"],
+    "counts_snapshot_note": "Section counts were confirmed via SELECT company, section, count(*) ... GROUP BY against the live sec_rag DB. Re-run the count query if the corpus is re-ingested."
+  },
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "What does Visa identify as its key risk factors?",
+      "target_company": "Visa",
+      "target_section": "risk_factors",
+      "tag": "normal",
+      "gold_rationale": "F1: Visa has 178 risk_factors chunks, so the section is present and a correct retrieval must surface Visa/risk_factors in top-k. At the frozen baseline (lists=100, probes=1) the vector channel returns none of these in top-20 because they live in unprobed ivfflat cells; BM25 buries the one it finds at rank ~13 under chunks that match the token 'Visa' in business contexts. So fused hit@5 is expected to be 0 at baseline and flip to 1 after the index fix."
+    },
+    {
+      "id": "Q02",
+      "question": "What are the principal risks Goldman Sachs discloses to investors?",
+      "target_company": "Goldman Sachs",
+      "target_section": "risk_factors",
+      "tag": "normal",
+      "gold_rationale": "Goldman has 227 risk_factors chunks the largest risk_factors section in the corpus. If hit@k improves for Visa but not Goldman, the fix is incomplete or Visa was a special case."
+    },
+    {
+      "id": "Q03",
+      "question": "What risks does JPMorgan Chase highlight in its annual filing?",
+      "target_company": "JPMorgan Chase",
+      "target_section": "risk_factors",
+      "tag": "normal",
+      "gold_rationale": "JPMorgan Chase has 222 risk_factors chunks: a third bank risk_factors question strengthens the 'does the fix generalize across companies' claim."
+    },
+    {
+      "id": "Q04",
+      "question": "What risk factors does Lemonade describe for its insurance business?",
+      "target_company": "Lemonade",
+      "target_section": "risk_factors",
+      "tag": "normal",
+      "gold_rationale": "Lemonade has 221 risk_factors chunks. Lemonade is the only insurtech in the set, so its risks (regulatory, reinsurance, loss-ratio) differ in vocabulary from the banks/payment companies. This tests whether retrieval works when the query's domain terms are distinct from the bulk of the corpus."
+    },
+    {
+      "id": "Q05",
+      "question": "How does Visa describe its core payment network business?",
+      "target_company": "Visa",
+      "target_section": "business",
+      "tag": "normal",
+      "gold_rationale": "Visa business has 133 chunks. Comparing Q01 vs Q05 across channels shows the failure in Q01 was section-specific (risk_factors got crowded out), not a blanket Visa failure."
+    },
+    {
+      "id": "Q06",
+      "question": "What does Coinbase say about its cryptocurrency exchange operations?",
+      "target_company": "Coinbase",
+      "target_section": "business",
+      "tag": "normal",
+      "gold_rationale": "Coinbase business has 148 chunks. Coinbase has no risk_factors and no mda section in the corpus, so business is the substantive section to query. Crypto-specific vocabulary (exchange, custody, staking) is semantically distinct, testing vector retrieval on domain terms unlikely to collide with the banks. A normal, should-pass question."
+    },
+    {
+      "id": "Q07",
+      "question": "What does PayPal report about its financial performance and results?",
+      "target_company": "PayPal",
+      "target_section": "financial_statements",
+      "tag": "normal",
+      "gold_rationale": "PayPal financial_statements has 116 chunks. financial_statements is the one section present for all seven companies, so it's the fair cross-company control."
+    },
+    {
+      "id": "Q08",
+      "question": "What does Block discuss regarding its market risk exposure?",
+      "target_company": "Block (Square)",
+      "target_section": "market_risk",
+      "tag": "normal",
+      "gold_rationale": "Block (Square) market_risk has 9 chunks. This is a low-but-nonzero-count normal question."
+    },
+    {
+      "id": "Q09",
+      "question": "What does Block identify as risks related to Bitcoin and its Cash App?",
+      "target_company": "Block (Square)",
+      "target_section": "risk_factors",
+      "tag": "retrieval-impossible",
+      "gold_rationale": "F2: Block (Square) has has risk_factors chunks the parser missed the section because Block's filing uses 'Square' / 'Cash App' branding and the section-boundary detection failed. Tagged retrieval-impossible: scored separately, NOT counted as a retrieval-quality failure."
+    },
+    {
+      "id": "Q10",
+      "question": "What market risk does Goldman Sachs disclose regarding interest rates and trading?",
+      "target_company": "Goldman Sachs",
+      "target_section": "market_risk",
+      "tag": "retrieval-impossible",
+      "gold_rationale": "F3: (Goldman side) Goldman market_risk has exactly 1 chunk, the parser barely caught the section.  Tagged retrieval-impossible (near-absent). Reported separately. Points to a parser/section-boundary issue, not retrieval."
+    },
+    {
+      "id": "Q11",
+      "question": "What market risk factors does JPMorgan Chase report?",
+      "target_company": "JPMorgan Chase",
+      "target_section": "market_risk",
+      "tag": "retrieval-impossible",
+      "gold_rationale": "F3: (JPMorgan side). JPMorgan Chase market_risk has 1 chunk, same near-absent situation as Goldman."
+    },
+    {
+      "id": "Q12",
+      "question": "What are the principal risks Goldman Sachs faces in its lending and credit activities?",
+      "target_company": "Goldman Sachs",
+      "target_section": "risk_factors",
+      "tag": "normal",
+      "metric_caveat": "F4-WATCH: hit@k does NOT score what F4 actually is. See gold_rationale.",
+      "gold_rationale": "F4 watch question: F4 in known_failures.md is a ranking quality problem: Goldman risk_factors chunk 202 is a generic-legalese fallback that scores flat across many unrelated queries and shows up as NOISE in candidate pools. That is a PRECISION problem (a wrong chunk surfacing), not a section-presence problem."
+    },
+    {
+      "id": "Q13",
+      "question": "What does Coinbase disclose about its exposure to market risk and crypto asset price volatility?",
+      "target_company": "Coinbase",
+      "target_section": "market_risk",
+      "tag": "normal",
+      "gold_rationale": "Coinbase market_risk has 34 chunks the richest market_risk section in the entire corpus (vs Goldman/JPMorgan at 1, Block at 9, Visa at 11, PayPal at 22). No prior question touched market_risk as a substantive section; Q08/Q10/Q11 are all thin or near-absent market_risk. Fair test of whether the system handles market_risk at all when the data is actually there. "
+    },
+    {
+      "id": "Q14",
+      "question": "How does PayPal's management discuss its operating results and growth trends?",
+      "target_company": "PayPal",
+      "target_section": "mda",
+      "tag": "normal",
+      "gold_rationale": "PayPal mda has 126 chunks. MD&A prose differs from both risk_factors (risk enumeration) and financial_statements (numeric/tabular) it tests retrieval on a third writing style. 'Management discuss... operating results and growth' uses MD&A-characteristic language, checking the query lands in the right section rather than bleeding into financial_statements (a plausible confusion since both discuss financials). A normal, should-hit question."
+    },
+    {
+      "id": "Q15",
+      "question": "What does Visa say in its management discussion about payment volume and revenue drivers?",
+      "target_company": "Visa",
+      "target_section": "mda",
+      "tag": "normal",
+      "gold_rationale": "Second mda coverage question, on Visa (mda = 78 chunks). Paired with Q14 (PayPal mda) so mda isn't tested on a single company. Visa now has three substantive sections queried — risk_factors (Q01), business (Q05), and mda (Q15) — all heavy with the token 'Visa'. This checks whether retrieval routes a Visa query to the right Visa section, or whether the strong 'Visa' lexical signal collapses sections together."
+    }
+  ]
+}
