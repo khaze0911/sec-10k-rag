@@ -91,4 +91,4 @@ sec-10k-rag/
 
 ## Related Projects
 
-- [Banking77 Intent Classifier](https://github.com/khaze0911/banking77-distilbert) — Fine-tuned DistilBERT, 93% macro F1, deployed on AWS EC2
+- [Banking77 Intent Classifier](https://github.com/khaze0911/banking77-intent-classifier) — Fine-tuned DistilBERT, 93% macro F1, deployed on AWS EC2
