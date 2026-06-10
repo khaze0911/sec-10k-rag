@@ -61,12 +61,12 @@ sec-10k-rag/
 │   ├── main.py             # FastAPI app
 │   └── models.py           # Pydantic schemas
 ├── docker/
-│   ├── Dockerfile          # CPU (EC2)
-│   ├── Dockerfile.gpu      # GPU (local dev)
-│   └── docker-compose.yml  # App + Postgres together
-├── pipeline.py             # Master pipeline script
-├── requirements.txt
-├── known_failures.md
+│   ├── Dockerfile          # GPU image — the EC2 deployment target (4-bit inference)
+│   ├── Dockerfile.cpu      # CPU image — local dev / fp32 fallback, slow
+│   └── docker-compose.yml  # API + Postgres(pgvector) together
+├── pipeline.py             # Offline orchestrator: fetch → parse → chunk → ingest
+├── pyproject.toml          # Packaging + dependencies (editable install)
+├── known_failures.md       # Failure taxonomy (F1–F6), canonical
 └── .env.example
 ```
 

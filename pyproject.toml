@@ -1,0 +1,62 @@
+# pyproject.toml — project metadata, dependencies, and packaging config.
+#
+# This is the single source of truth for dependencies. Install with:
+#     pip install -e .
+#
+# ⚠ torch is intentionally NOT listed here. The plain PyPI torch wheel can be
+#   CPU-only or built against the wrong CUDA. Install it explicitly FIRST, from
+#   the PyTorch index that matches your hardware, THEN run `pip install -e .`:
+#       GPU (CUDA 12.1): pip install torch --index-url https://download.pytorch.org/whl/cu121
+#       CPU only:        pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   (bitsandbytes / accelerate below assume a working torch is already present.)
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sec-10k-rag"
+version = "0.1.0"
+description = "Hybrid BM25 + vector RAG pipeline over SEC 10-K filings."
+requires-python = ">=3.10"
+
+dependencies = [
+    # EDGAR fetch, HTML parsing, chunking
+    "requests>=2.32.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.2.0",
+
+    # Embeddings + pgvector + orchestration
+    "sentence-transformers>=3.0.0",
+    "psycopg2-binary>=2.9.0",
+    "pgvector>=0.3.0",
+    "langchain-core>=0.2.0",
+    "langchain-huggingface>=0.0.3",
+
+    # BM25
+    "rank-bm25",
+
+    # Mistral-7B local inference (torch installed separately — see note above)
+    "transformers>=4.44.0",
+    "accelerate>=0.33.0",
+    "bitsandbytes>=0.43.0",
+
+    # Evaluation
+    "rouge-score>=0.1.2",
+    "numpy>=1.26.0",
+
+    # FastAPI
+    "fastapi>=0.112.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.8.0",
+    "anyio>=4.3.0",          # threadpool limiter used in app/main.py
+
+    # Dev / utility
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+]
+
+# Both `src` and `app` are importable packages (each has __init__.py), so the
+# editable install wires up `import src...` and `import app...` from the root.
+[tool.setuptools]
+packages = ["src", "app"]
