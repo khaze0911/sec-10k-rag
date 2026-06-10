@@ -5,9 +5,9 @@ retriever.py — Hybrid BM25 + Vector Search with Reciprocal Rank Fusion
 Run:
   Not run directly — imported by rag_chain.py and the FastAPI app
   But has a __main__ block for testing:
-    python src/retriever.py
-
-Concurrency note (Day 5 FastAPI):
+    python -m src.retriever   # run as a module from the repo root
+    
+Concurrency note:
   A single psycopg2 connection is NOT safe to share across threads serving
   concurrent requests. This module uses a ThreadedConnectionPool: each DB
   operation borrows a connection, uses it, and returns it. The in-memory BM25
