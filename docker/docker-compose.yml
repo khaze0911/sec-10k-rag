@@ -1,0 +1,72 @@
+# docker/docker-compose.yml  —  API + Postgres(pgvector). Portable base (committed).
+# =============================================================================
+#
+# Local development overrides (e.g. bind-mounting already-downloaded model
+# weights) live in docker-compose.override.yml, which is gitignored. Compose
+# merges the override on top of this file when both are passed.
+#
+# RUN — EC2 / fresh machine (downloads model weights into the `models` volume):
+#     docker compose -f docker/docker-compose.yml up -d
+#   Requires HF_TOKEN in the environment (or a .env file) so the ~14 GB Mistral
+#   download is authenticated — anonymous pulls get rate-limited and stall.
+#
+# RUN — local with overrides (reuses on-disk weights, skips the download):
+#     docker compose -f docker/docker-compose.yml -f docker/docker-compose.override.yml up -d
+#
+# BUILD CONTEXT: this file sits in docker/, but the Dockerfile COPYs from the
+#   repo ROOT, so `context: ..` points up one level and `dockerfile:` is named
+#   relative to that context.
+#
+# EMPTY DATABASE: `db` starts FRESH and EMPTY. Restore a pg_dump of sec_rag into
+#   it before using /ask (do NOT run ingest.py — it rebuilds the ivfflat index
+#   and invalidates the measured eval). Staged bring-up:
+#     docker compose -f docker/docker-compose.yml up -d db
+#     docker compose -f docker/docker-compose.yml exec -T db psql -U postgres -d sec_rag < sec_rag.dump
+#     docker compose -f docker/docker-compose.yml exec db psql -U postgres -d sec_rag -c "SELECT count(*) FROM chunks;"  # expect 2932
+#     docker compose -f docker/docker-compose.yml up -d api
+# =============================================================================
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: sec_rag
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sec_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/sec_rag
+      MODEL_NAME: mistralai/Mistral-7B-Instruct-v0.2
+      MODEL_CACHE_DIR: /models
+      # Authenticates HF downloads so the fresh ~14 GB Mistral pull doesn't hit
+      # the anonymous rate limit. Set HF_TOKEN in the shell or a .env file.
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - models:/models        # named volume; weights download here on first run
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  models:

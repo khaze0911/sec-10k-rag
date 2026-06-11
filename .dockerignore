@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.env                
+.venv/
+venv/
+models/
+eval/    
+scripts/
+*.md
+.git/
+.gitignore
+tests/
+data/
+*.dump
+*.sql
+*.egg-info/

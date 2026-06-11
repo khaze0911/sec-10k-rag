@@ -1,0 +1,74 @@
+# docker/Dockerfile.gpu  —  GPU image (4-bit inference). Deployment target + local dev.
+# =============================================================================
+# Requires the NVIDIA Container Toolkit on the host (EC2 deep-learning AMIs
+# ship with it; on a local box, install nvidia-container-toolkit and run
+# `nvidia-ctk runtime configure --runtime=docker && systemctl restart docker`).
+#
+# BUILD:
+#     docker build -f docker/Dockerfile.gpu -t sec-rag:gpu .
+#
+# RUN — bridge networking (DB on the host machine):
+#     docker run --rm --gpus all -p 8000:8000 \
+#         --add-host=host.docker.internal:host-gateway \
+#         -e DATABASE_URL='postgresql://USER:PW@host.docker.internal:5432/sec_rag' \
+#         -v ~/repos/sec-10k-rag/models:/models \
+#         sec-rag:gpu
+#   NOTE: host Postgres must listen beyond localhost (listen_addresses='*'),
+#   allow the docker subnet in pg_hba.conf (172.17.0.0/16), and the host
+#   firewall must permit it. The container reaches the host at
+#   host.docker.internal -> 172.17.0.1.
+#
+# RUN — host networking (simpler; container shares host network stack):
+#     docker run --rm --gpus all --network host \
+#         -e DATABASE_URL='postgresql://USER:PW@localhost:5432/sec_rag' \
+#         -v ~/repos/sec-10k-rag/models:/models \
+#         sec-rag:gpu
+#   (drop -p with --network host; localhost reaches host Postgres directly.)
+#
+# -v mounts existing weights to skip a ~14GB re-download; an empty mount
+# downloads them from HuggingFace on first run (slow once, cached after).
+#
+# On a GPU host, rag_chain.py's torch.cuda.is_available() passes, so
+# bitsandbytes loads Mistral-7B in 4-bit (nf4): ~5 GB VRAM vs ~28 GB RAM.
+# =============================================================================
+
+# CUDA *runtime* base
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MODEL_CACHE_DIR=/models \
+    HF_HOME=/models/hf
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.10 python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Dependency layer 
+COPY pyproject.toml ./
+COPY src/__init__.py ./src/__init__.py
+COPY app/__init__.py ./app/__init__.py
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install -e .
+
+# Source layer
+COPY src/ ./src/
+COPY app/ ./app/
+
+RUN useradd -m appuser && chown -R appuser:appuser /app
+RUN mkdir -p /models/hf && chown -R appuser:appuser /models
+USER appuser
+
+EXPOSE 8000
+
+# Shorter start-period than CPU: 4-bit GPU load is much faster than fp32 CPU,
+# but still allow minutes for the first weight download into the volume
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+    CMD python3 -c "import urllib.request,sys,json; \
+r=urllib.request.urlopen('http://localhost:8000/health'); \
+sys.exit(0 if json.load(r).get('ready') else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
