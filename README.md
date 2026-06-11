@@ -1,8 +1,8 @@
 # SEC 10-K RAG Pipeline
 
-> Hybrid BM25 + vector retrieval over SEC 10-K filings, with a measured evaluation loop. Built with LangChain, Mistral-7B (4-bit quantized), pgvector, and FastAPI; containerized with Docker, targeting AWS EC2 (GPU) deployment.
+> Hybrid BM25 + vector retrieval over SEC 10-K filings, with a measured evaluation loop. Built with LangChain, Mistral-7B (4-bit quantized), pgvector, and FastAPI; containerized with Docker and deployed on AWS EC2 (GPU).
 
-**Status: EC2 deployment in progress.**
+**Status: Complete — deployed on AWS EC2 (`g5.xlarge`); instance run on-demand for demos.**
 
 ---
 
@@ -88,7 +88,7 @@ Retrieval design notes:
 | LLM | Mistral-7B-Instruct (4-bit quantized via bitsandbytes) |
 | API | FastAPI (Uvicorn) |
 | Container | Docker / docker-compose |
-| Deployment target | AWS EC2 (`g5.xlarge`, A10G GPU) |
+| Deployment | AWS EC2 (`g5.xlarge`, A10G GPU) |
 
 ---
 
@@ -205,6 +205,40 @@ Notes:
 - Requires the NVIDIA Container Toolkit on the host (`--gpus all` fails without it).
 - `host.docker.internal` needs the `--add-host` flag on Linux. For it to connect, the host Postgres must listen beyond `localhost` (`listen_addresses='*'`), allow the docker subnet in `pg_hba.conf` (`172.17.0.0/16`), and have the firewall permit it. The `--network host` form avoids all of that for local runs.
 - `-v .../models:/models` mounts existing weights to skip a ~14 GB re-download; an empty mount downloads them from HuggingFace on first run and caches them after.
+
+---
+
+## Deployment (AWS EC2)
+
+Deployed on a **`g5.xlarge`** GPU instance (single NVIDIA A10G, 24 GB VRAM), running 4-bit Mistral-7B. The instance is **run on-demand for demos, not left running 24/7** — started before a demo, stopped after — so GPU compute is billed only while in use (~$1/hr), with only the EBS volume billed while stopped. The deployment artifact (image + EC2 configuration) is the deliverable; uptime is not the goal for a portfolio demo.
+
+**Instance:** Deep Learning OSS Nvidia Driver AMI (Ubuntu), which ships with the NVIDIA driver and Container Toolkit pre-installed, so GPU passthrough works out of the box. The security group restricts SSH (22) and the API (8000) to a single IP. The instance's EBS root volume persists the model weights and Postgres data across stop/start.
+
+**Bring-up** is staged, because the database starts empty and the model weights download on first run:
+
+```bash
+# On the instance: clone the repo, copy up a pg_dump of the corpus, and create
+# docker/.env with HF_TOKEN (authenticates the ~14 GB Mistral download) and
+# POSTGRES_PASSWORD.
+
+# 1. Start Postgres, restore the corpus (NOT ingest — that rebuilds the measured
+#    ivfflat index), and verify the row count before starting the API:
+docker compose -f docker/docker-compose.yml --env-file docker/.env up -d db
+docker compose -f docker/docker-compose.yml exec -T db \
+    psql -U postgres -d sec_rag < sec_rag.dump
+docker compose -f docker/docker-compose.yml exec db \
+    psql -U postgres -d sec_rag -c "SELECT count(*) FROM chunks;"   # expect 2932
+
+# 2. Start the API (first run builds the image + downloads weights):
+docker compose -f docker/docker-compose.yml --env-file docker/.env up -d --build api
+
+# 3. Health-check, then query:
+curl localhost:8000/health
+curl -X POST localhost:8000/ask -H 'Content-Type: application/json' \
+     -d '{"question":"How does PayPal generate revenue?"}'
+```
+
+The `HF_TOKEN` is required: an unauthenticated download of the Mistral weights gets rate-limited and stalls. The staged restore (rather than re-running ingest) preserves the exact `ivfflat` index the evaluation was measured against.
 
 ---
 
