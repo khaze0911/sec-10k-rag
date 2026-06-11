@@ -164,6 +164,9 @@ python pipeline.py --step chunk
 ### Query from the command line
 
 ```bash
+python -m src.rag_chain "How does PayPal generate revenue?"
+
+# this query currently demonstrates F6 (parser boundary bug) — see known_failures.md
 python -m src.rag_chain "What does Visa identify as key risks?"
 python -m src.retriever            # runs the retriever's built-in test queries
 ```
